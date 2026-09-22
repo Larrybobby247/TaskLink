@@ -13,8 +13,8 @@ export function verifyToken(token) {
 export function setAuthCookie(res, token) {
   res.cookie(env.jwtCookieName, token, {
     httpOnly: true,
-    secure: env.cookieSecure,
-    sameSite: env.cookieSecure ? 'none' : 'lax',
+    secure: true,
+    sameSite: 'none',
     maxAge: 7 * 24 * 60 * 60 * 1000,
     path: '/',
   });
