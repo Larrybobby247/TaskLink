@@ -1,0 +1,40 @@
+import { Router } from 'express';
+import authRoutes from './auth.routes.js';
+import usersRoutes from './users.routes.js';
+import tasksRoutes from './tasks.routes.js';
+import applicationsRoutes from './applications.routes.js';
+import ordersRoutes from './orders.routes.js';
+import paymentsRoutes from './payments.routes.js';
+import walletRoutes from './wallet.routes.js';
+import withdrawalsRoutes from './withdrawals.routes.js';
+import workersRoutes from './workers.routes.js';
+import messagesRoutes from './messages.routes.js';
+import reviewsRoutes from './reviews.routes.js';
+import notificationsRoutes from './notifications.routes.js';
+import subscriptionsRoutes from './subscriptions.routes.js';
+import categoriesRoutes from './categories.routes.js';
+import uploadsRoutes from './uploads.routes.js';
+import reportsRoutes from './reports.routes.js';
+import adminRoutes from './admin.routes.js';
+
+const router = Router();
+
+router.use('/auth', authRoutes);
+router.use('/users', usersRoutes);
+router.use('/tasks', tasksRoutes);
+router.use('/applications', applicationsRoutes);
+router.use('/orders', ordersRoutes);
+router.use('/payments', paymentsRoutes);
+router.use('/wallet', walletRoutes);
+router.use('/withdrawals', withdrawalsRoutes);
+router.use('/workers', workersRoutes);
+router.use('/messages', messagesRoutes);
+router.use('/reviews', reviewsRoutes);
+router.use('/notifications', notificationsRoutes);
+router.use('/subscriptions', subscriptionsRoutes);
+router.use('/categories', categoriesRoutes);
+router.use('/uploads', uploadsRoutes);
+router.use('/reports', reportsRoutes);
+router.use('/admin', adminRoutes);
+
+export default router;
