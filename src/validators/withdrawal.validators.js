@@ -5,7 +5,8 @@ export const requestWithdrawalSchema = z.object({
 });
 
 export const addBankAccountSchema = z.object({
-  bankName: z.string().min(2),
-  bankCode: z.string().min(2),
-  accountNumber: z.string().length(10),
+  bankName: z.string().trim().min(2).max(100),
+  accountNumber: z.string().regex(/^\d{10}$/, 'Account number must contain exactly 10 digits'),
+  accountName: z.string().trim().min(2).max(100),
+  bankCode: z.string().trim().min(2).max(20).optional(),
 });
