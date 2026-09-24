@@ -11,6 +11,7 @@ export async function createReview(reviewerId, orderId, { rating, comment }) {
   const uid = String(reviewerId);
   let revieweeId;
   let reviewerRole;
+
   if (String(order.client) === uid) {
     revieweeId = order.worker;
     reviewerRole = 'CLIENT';
@@ -25,9 +26,18 @@ export async function createReview(reviewerId, orderId, { rating, comment }) {
 
   let review;
   try {
-    review = await Review.create({ order: orderId, reviewer: reviewerId, reviewee: revieweeId, reviewerRole, rating, comment });
+    review = await Review.create({
+      order: orderId,
+      reviewer: reviewerId,
+      reviewee: revieweeId,
+      reviewerRole,
+      rating,
+      comment,
+    });
   } catch (err) {
-    if (err.code === 11000) throw new AppError('You have already reviewed this order', 400);
+    if (err.code === 11000) {
+      throw new AppError('You have already reviewed this order', 409);
+    }
     throw err;
   }
 
@@ -41,6 +51,7 @@ export async function createReview(reviewerId, orderId, { rating, comment }) {
     entityType: 'ORDER',
     entityId: orderId,
   });
+
   const reviewee = await User.findById(revieweeId);
   if (reviewee) emailService.sendNewReview(reviewee, review);
 
@@ -54,8 +65,6 @@ export async function createReview(reviewerId, orderId, { rating, comment }) {
  * directly by a user.
  */
 async function recalculateAggregateRating(userId, reviewerRoleOfIncomingReview) {
-  // A CLIENT's reviews of a WORKER update the worker's `rating`; a WORKER's
-  // reviews of a CLIENT update the client's `clientRating`.
   const targetField = reviewerRoleOfIncomingReview === 'CLIENT' ? 'worker' : 'client';
 
   const stats = await Review.aggregate([
@@ -79,6 +88,7 @@ export async function getReviewsForUser(userId, { page, limit, skip }) {
     Review.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).populate('reviewer', 'fullName username profileImage'),
     Review.countDocuments(filter),
   ]);
+
   return { items, total };
 }
 
@@ -86,8 +96,5 @@ export async function getReviewForOrder(orderId, reviewerId) {
   return Review.findOne({
     order: orderId,
     reviewer: reviewerId,
-  }).populate(
-    'reviewer',
-    'fullName username profileImage'
-  );
+  }).populate('reviewer', 'fullName username profileImage');
 }
