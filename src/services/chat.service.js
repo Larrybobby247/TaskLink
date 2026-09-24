@@ -1,4 +1,4 @@
-import { Conversation, Message, Application, Order } from '../models/index.js';
+import { Conversation, Message, Application } from '../models/index.js';
 import { AppError } from '../utils/AppError.js';
 import { notify } from './notification.service.js';
 import { emailService } from './email.service.js';
@@ -8,7 +8,7 @@ import { User } from '../models/index.js';
 // bypass attempts, per spec section 74. Intentionally conservative - it flags
 // messages for review rather than blocking them outright, to avoid making chat unusable.
 const BYPASS_PATTERNS = [
-  /\b\d{11}\b/, // looks like a raw Nigerian phone number
+  /\b\d{11}\b/,
   /\b(whatsapp|telegram|call me on|reach me on)\b/i,
   /\b(bank transfer|send money to|opay|palmpay)\b.*\b(acct|account|\d{10})\b/i,
 ];
@@ -17,11 +17,10 @@ function detectBypassAttempt(text = '') {
   return BYPASS_PATTERNS.some((re) => re.test(text));
 }
 
-/**
- * Chat is only permitted between an established client/worker relationship -
- * i.e. an application on a task, or the resulting order. Fully open DMs are
- * intentionally not supported.
- */
+function isParticipant(conversation, userId) {
+  return conversation.participants.some((participant) => String(participant) === String(userId));
+}
+
 export async function getOrCreateConversationForApplication(applicationId, requestingUserId) {
   const application = await Application.findById(applicationId).populate('task');
   if (!application) throw new AppError('Application not found', 404);
@@ -46,17 +45,43 @@ export async function getOrCreateConversationForApplication(applicationId, reque
 
 export async function listConversations(userId, { page, limit, skip }) {
   const filter = { participants: userId };
-  const [items, total] = await Promise.all([
-    Conversation.find(filter).sort({ updatedAt: -1 }).skip(skip).limit(limit).populate('participants', 'fullName username profileImage'),
+  const [conversations, total] = await Promise.all([
+    Conversation.find(filter)
+      .sort({ updatedAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate('participants', 'fullName username profileImage'),
     Conversation.countDocuments(filter),
   ]);
+
+  const items = await Promise.all(conversations.map(async (conversation) => {
+    const [lastMessage, unreadCount] = await Promise.all([
+      Message.findOne({ conversation: conversation._id })
+        .sort({ createdAt: -1 })
+        .select('sender text createdAt')
+        .lean(),
+      Message.countDocuments({
+        conversation: conversation._id,
+        readBy: { $ne: userId },
+      }),
+    ]);
+
+    const item = conversation.toObject();
+    item.lastMessage = lastMessage?.text || item.lastMessage || '';
+    item.lastMessageAt = lastMessage?.createdAt || item.lastMessageAt;
+    item.lastMessageSender = lastMessage?.sender || null;
+    item.unreadCount = unreadCount;
+
+    return item;
+  }));
+
   return { items, total };
 }
 
 export async function sendMessage(senderId, conversationId, { text, attachment }) {
   const conversation = await Conversation.findById(conversationId);
   if (!conversation) throw new AppError('Conversation not found', 404);
-  if (!conversation.participants.some((p) => String(p) === String(senderId))) {
+  if (!isParticipant(conversation, senderId)) {
     throw new AppError('You are not part of this conversation', 403);
   }
   if (conversation.isBlocked) throw new AppError('This conversation has been blocked', 403);
@@ -95,22 +120,36 @@ export async function sendMessage(senderId, conversationId, { text, attachment }
   return { message, flaggedForBypass };
 }
 
-export async function getMessages(userId, conversationId, { page, limit, skip }) {
-  const conversation = await Conversation.findById(conversationId);
+export async function markConversationRead(userId, conversationId) {
+  const conversation = await Conversation.findById(conversationId).select('participants');
   if (!conversation) throw new AppError('Conversation not found', 404);
-  if (!conversation.participants.some((p) => String(p) === String(userId))) {
+  if (!isParticipant(conversation, userId)) {
     throw new AppError('You are not part of this conversation', 403);
   }
-
-  const [items, total] = await Promise.all([
-    Message.find({ conversation: conversationId }).sort({ createdAt: -1 }).skip(skip).limit(limit),
-    Message.countDocuments({ conversation: conversationId }),
-  ]);
 
   await Message.updateMany(
     { conversation: conversationId, readBy: { $ne: userId } },
     { $addToSet: { readBy: userId } }
   );
+}
+
+export async function getMessages(userId, conversationId, { page, limit, skip }) {
+  const conversation = await Conversation.findById(conversationId).select('participants');
+  if (!conversation) throw new AppError('Conversation not found', 404);
+  if (!isParticipant(conversation, userId)) {
+    throw new AppError('You are not part of this conversation', 403);
+  }
+
+  const [items, total] = await Promise.all([
+    Message.find({ conversation: conversationId })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate('sender', 'fullName username profileImage'),
+    Message.countDocuments({ conversation: conversationId }),
+  ]);
+
+  await markConversationRead(userId, conversationId);
 
   return { items: items.reverse(), total };
 }
