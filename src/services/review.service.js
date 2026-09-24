@@ -81,3 +81,13 @@ export async function getReviewsForUser(userId, { page, limit, skip }) {
   ]);
   return { items, total };
 }
+
+export async function getReviewForOrder(orderId, reviewerId) {
+  return Review.findOne({
+    order: orderId,
+    reviewer: reviewerId,
+  }).populate(
+    'reviewer',
+    'fullName username profileImage'
+  );
+}
