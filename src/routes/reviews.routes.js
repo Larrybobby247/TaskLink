@@ -1,10 +1,15 @@
-import express from 'express';
-import { createReview, getOrderReview } from '../controllers/reviewController.js';
-import auth from '../middleware/auth.js';
+import { Router } from 'express';
+import {
+  getUserReviews,
+  getOrderReview,
+  createReview,
+} from '../controllers/reviews.controller.js';
+import { requireAuth } from '../middleware/auth.middleware.js';
 
-const router = express.Router();
+const router = Router();
 
-router.post('/orders/:orderId/review', auth, createReview);
-router.get('/reviews/order/:orderId', auth, getOrderReview);
+router.get('/user/:userId', requireAuth, getUserReviews);
+router.get('/order/:orderId', requireAuth, getOrderReview);
+router.post('/order/:orderId/review', requireAuth, createReview);
 
 export default router;
