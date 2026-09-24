@@ -13,6 +13,7 @@ const reviewSchema = new Schema(
   { timestamps: true }
 );
 
+// Prevent duplicate reviews for the same order by the same reviewer
 reviewSchema.index({ order: 1, reviewer: 1 }, { unique: true });
 
 export const Review = mongoose.model('Review', reviewSchema);
