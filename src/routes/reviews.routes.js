@@ -1,8 +1,10 @@
-import { Router } from 'express';
-import * as reviewsController from '../controllers/reviews.controller.js';
+import express from 'express';
+import { createReview, getOrderReview } from '../controllers/reviewController.js';
+import auth from '../middleware/auth.js';
 
-const router = Router();
+const router = express.Router();
 
-router.get('/user/:userId', reviewsController.getUserReviews);
+router.post('/orders/:orderId/review', auth, createReview);
+router.get('/reviews/order/:orderId', auth, getOrderReview);
 
 export default router;
