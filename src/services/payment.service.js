@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { Payment, Order, Subscription, User } from '../models/index.js';
+import { Payment, Order, Subscription, User, Task } from '../models/index.js';
 import { AppError } from '../utils/AppError.js';
 import * as paystack from './paystack.service.js';
 import { generateReference } from '../utils/crypto.js';
@@ -46,6 +46,52 @@ export async function initializeOrderPayment(user, orderId) {
   await payment.save();
 
   return { authorizationUrl: paystackData.authorization_url, reference, publicKey: undefined };
+}
+
+/**
+ * Initializes payment for boosting/featuring a task so it surfaces more
+ * prominently to workers. The fee is always read from PlatformSetting -
+ * never accepted from the frontend - so it can be changed platform-wide by
+ * an admin (see admin.controller.js#updateSettings) without touching this code.
+ */
+export async function initializeFeaturedTaskPayment(user, taskId) {
+  const task = await Task.findById(taskId);
+  if (!task) throw new AppError('Task not found', 404);
+  if (String(task.client) !== String(user._id)) throw new AppError('Only the task owner can boost this task', 403);
+
+  const NOT_BOOSTABLE_STATUSES = ['DRAFT', 'CANCELLED', 'COMPLETED', 'EXPIRED'];
+  if (NOT_BOOSTABLE_STATUSES.includes(task.status)) {
+    throw new AppError(`A task in status ${task.status} cannot be boosted`, 400);
+  }
+  if (task.isFeatured && task.featuredUntil && task.featuredUntil > new Date()) {
+    throw new AppError('This task is already boosted', 400);
+  }
+
+  const settings = await getPlatformSettings();
+  const amountKobo = settings.featuredTaskPriceKobo;
+  const reference = generateReference('BOOST');
+
+  const payment = await Payment.create({
+    user: user._id,
+    task: task._id,
+    paystackReference: reference,
+    amountKobo,
+    status: 'INITIALIZED',
+    paymentType: 'FEATURED_TASK',
+    metadata: { taskId: String(task._id) },
+  });
+
+  const paystackData = await paystack.initializeTransaction({
+    email: user.email,
+    amountKobo,
+    reference,
+    metadata: { taskId: String(task._id), userId: String(user._id), paymentType: 'FEATURED_TASK' },
+  });
+
+  payment.paystackAccessCode = paystackData.access_code;
+  await payment.save();
+
+  return { authorizationUrl: paystackData.authorization_url, reference, amountKobo };
 }
 
 /**
@@ -111,6 +157,8 @@ export async function verifyAndProcessPayment(reference, eventSource = 'redirect
         await markOrderPaid(freshPayment.order, session);
       } else if (freshPayment.paymentType === 'SUBSCRIPTION') {
         await activateSubscriptionFromPayment(freshPayment, session);
+      } else if (freshPayment.paymentType === 'FEATURED_TASK') {
+        await activateFeaturedTask(freshPayment, session);
       }
     });
   } finally {
@@ -138,6 +186,18 @@ export async function verifyAndProcessPayment(reference, eventSource = 'redirect
       entityId: order._id,
     });
     emailService.sendPaymentSuccessful(order.client, order);
+  } else if (finalPayment.paymentType === 'FEATURED_TASK') {
+    const task = await Task.findById(finalPayment.task);
+    if (task) {
+      await notify({
+        userId: task.client,
+        type: 'PAYMENT_RECEIVED',
+        title: 'Task boosted 🚀',
+        body: `"${task.title}" is now featured and will reach more workers until ${task.featuredUntil?.toLocaleDateString?.() || 'soon'}.`,
+        entityType: 'TASK',
+        entityId: task._id,
+      });
+    }
   }
 
   return { payment: finalPayment, alreadyProcessed: false, success: true };
@@ -163,4 +223,16 @@ async function activateSubscriptionFromPayment(payment, session) {
     );
   }
   return subscription;
+}
+
+/** Marks a task as featured once its boost payment succeeds. */
+async function activateFeaturedTask(payment, session) {
+  const settings = await getPlatformSettings();
+  const durationMs = settings.featuredTaskDurationDays * 24 * 60 * 60 * 1000;
+
+  await Task.updateOne(
+    { _id: payment.task },
+    { isFeatured: true, featuredUntil: new Date(Date.now() + durationMs) },
+    { session }
+  );
 }
