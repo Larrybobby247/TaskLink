@@ -22,6 +22,10 @@ router.post('/:id/pause', requireAuth, tasksController.pauseTask);
 router.post('/:id/save', requireAuth, tasksController.saveTask);
 router.delete('/:id/save', requireAuth, tasksController.unsaveTask);
 
+// Boost/feature a task - requireTaskOwnership checks req.params.id against
+// the authenticated user server-side, same as every other owner-only action.
+router.post('/:id/boost', requireAuth, requireTaskOwnership, tasksController.boostTask);
+
 router.post('/:taskId/applications', requireAuth, requireVerifiedEmail, validate(applyToTaskSchema), applicationsController.applyToTask);
 router.get('/:taskId/applications', requireAuth, requireTaskOwnership, applicationsController.listApplicationsForTask);
 
