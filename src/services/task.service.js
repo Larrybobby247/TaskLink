@@ -1,4 +1,4 @@
-import { Task, SavedTask } from '../models/index.js';
+import { Task, SavedTask, Application } from '../models/index.js';
 import { AppError } from '../utils/AppError.js';
 
 export async function createTask(clientId, payload) {
@@ -28,14 +28,33 @@ export async function pauseTask(clientId, taskId) {
   return task;
 }
 
-export async function getTaskById(taskId) {
-  const task = await Task.findById(taskId).populate('category').populate('client', 'fullName username profileImage rating reviewCount location');
+/**
+ * `viewerId` is optional (routes use attachUserIfPresent, not requireAuth, so
+ * anonymous browsing still works). When present, we attach `hasApplied` +
+ * `myApplicationStatus` so the frontend can show "Applied" instead of "Apply"
+ * without a follow-up request per task.
+ */
+export async function getTaskById(taskId, viewerId) {
+  const task = await Task.findById(taskId)
+    .populate('category')
+    .populate('client', 'fullName username profileImage rating reviewCount location')
+    .lean();
   if (!task) throw new AppError('Task not found', 404);
+
+  if (viewerId) {
+    const existing = await Application.findOne({ task: taskId, worker: viewerId }).select('status').lean();
+    task.hasApplied = Boolean(existing);
+    task.myApplicationStatus = existing?.status || null;
+  } else {
+    task.hasApplied = false;
+    task.myApplicationStatus = null;
+  }
+
   return task;
 }
 
 export async function searchTasks({
-  q, category, location, isRemote, minBudgetKobo, maxBudgetKobo, sort = 'newest', page, limit, skip,
+  q, category, location, isRemote, minBudgetKobo, maxBudgetKobo, sort = 'newest', page, limit, skip, viewerId,
 }) {
   const filter = { status: { $in: ['PUBLISHED', 'APPLICATIONS_OPEN'] } };
 
@@ -57,11 +76,37 @@ export async function searchTasks({
     urgent: { deadline: 1 },
   };
 
+  // Boosted tasks are always pinned above everything else, regardless of the
+  // chosen sort - the requested sort still applies as the secondary key
+  // within each group (boosted vs. not). `isFeatured` is kept accurate by a
+  // scheduled job that clears it once `featuredUntil` passes (see
+  // jobs/expireFeaturedTasks.job.js), so this is safe to sort on directly.
+  const effectiveSort = { isFeatured: -1, ...(sortMap[sort] || sortMap.newest) };
+
   const [items, total] = await Promise.all([
-    Task.find(filter).sort(sortMap[sort] || sortMap.newest).skip(skip).limit(limit).populate('category'),
+    Task.find(filter).sort(effectiveSort).skip(skip).limit(limit).populate('category').lean(),
     Task.countDocuments(filter),
   ]);
-  return { items, total };
+
+  const annotated = await annotateWithApplicationStatus(items, viewerId);
+  return { items: annotated, total };
+}
+
+/**
+ * Attaches `hasApplied` to every task in one extra query (not one per card),
+ * covering the whole page of results at once.
+ */
+async function annotateWithApplicationStatus(tasks, viewerId) {
+  if (!viewerId || tasks.length === 0) {
+    return tasks.map((t) => ({ ...t, hasApplied: false }));
+  }
+  const applications = await Application.find({
+    worker: viewerId,
+    task: { $in: tasks.map((t) => t._id) },
+  }).select('task').lean();
+
+  const appliedTaskIds = new Set(applications.map((a) => String(a.task)));
+  return tasks.map((t) => ({ ...t, hasApplied: appliedTaskIds.has(String(t._id)) }));
 }
 
 export async function saveTask(userId, taskId) {
