@@ -40,14 +40,18 @@ export const deleteTask = asyncHandler(async (req, res) => {
   return ok(res, { message: 'Task deleted' });
 });
 
+// req.user is optional here (route uses attachUserIfPresent, not requireAuth) -
+// task.service.js#getTaskById handles a missing viewer id gracefully.
 export const getTask = asyncHandler(async (req, res) => {
-  const task = await taskService.getTaskById(req.params.id);
+  const task = await taskService.getTaskById(req.params.id, req.user?._id);
   return ok(res, { task });
 });
 
+// Also optional here, for the same reason - anonymous visitors still get
+// results, just without a `hasApplied` flag on each task.
 export const searchTasks = asyncHandler(async (req, res) => {
   const { page, limit, skip } = getPagination(req.query);
-  const { items, total } = await taskService.searchTasks({ ...req.query, page, limit, skip });
+  const { items, total } = await taskService.searchTasks({ ...req.query, page, limit, skip, viewerId: req.user?._id });
   return paginated(res, items, { page, limit, total });
 });
 
@@ -78,11 +82,6 @@ export const getSavedTasks = asyncHandler(async (req, res) => {
   return paginated(res, items, { page, limit, total });
 });
 
-/**
- * Starts a Paystack payment to boost/feature this task. The fee is computed
- * server-side from PlatformSetting (see payment.service.js) - the frontend
- * only ever gets back an authorization URL to redirect to.
- */
 export const boostTask = asyncHandler(async (req, res) => {
   const result = await paymentService.initializeFeaturedTaskPayment(req.user, req.params.id);
   return ok(res, result);
