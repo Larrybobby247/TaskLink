@@ -3,6 +3,7 @@ import { AppError } from '../utils/AppError.js';
 import { ok, created, paginated } from '../utils/apiResponse.js';
 import { getPagination } from '../utils/AppError.js';
 import * as taskService from '../services/task.service.js';
+import * as paymentService from '../services/payment.service.js';
 import { Task } from '../models/index.js';
 
 export const createTask = asyncHandler(async (req, res) => {
@@ -75,4 +76,14 @@ export const getSavedTasks = asyncHandler(async (req, res) => {
   const { page, limit, skip } = getPagination(req.query);
   const { items, total } = await taskService.getSavedTasks(req.user._id, { page, limit, skip });
   return paginated(res, items, { page, limit, total });
+});
+
+/**
+ * Starts a Paystack payment to boost/feature this task. The fee is computed
+ * server-side from PlatformSetting (see payment.service.js) - the frontend
+ * only ever gets back an authorization URL to redirect to.
+ */
+export const boostTask = asyncHandler(async (req, res) => {
+  const result = await paymentService.initializeFeaturedTaskPayment(req.user, req.params.id);
+  return ok(res, result);
 });
