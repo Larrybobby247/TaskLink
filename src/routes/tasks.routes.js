@@ -1,17 +1,20 @@
 import { Router } from 'express';
 import * as tasksController from '../controllers/tasks.controller.js';
 import * as applicationsController from '../controllers/applications.controller.js';
-import { requireAuth, requireVerifiedEmail } from '../middleware/auth.middleware.js';
+import { requireAuth, requireVerifiedEmail, attachUserIfPresent } from '../middleware/auth.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
 import { requireTaskOwnership } from '../middleware/ownership.middleware.js';
 import { createTaskSchema, applyToTaskSchema, searchTasksQuerySchema } from '../validators/task.validators.js';
 
 const router = Router();
 
-router.get('/', validate(searchTasksQuerySchema, 'query'), tasksController.searchTasks);
+// attachUserIfPresent populates req.user when a valid session cookie exists,
+// but never blocks the request when it doesn't - browsing stays public while
+// logged-in workers get `hasApplied` on each result (see tasks.controller.js).
+router.get('/', attachUserIfPresent, validate(searchTasksQuerySchema, 'query'), tasksController.searchTasks);
 router.get('/saved', requireAuth, tasksController.getSavedTasks);
 router.get('/mine', requireAuth, tasksController.getMyTasks);
-router.get('/:id', tasksController.getTask);
+router.get('/:id', attachUserIfPresent, tasksController.getTask);
 
 router.post('/', requireAuth, requireVerifiedEmail, validate(createTaskSchema), tasksController.createTask);
 router.patch('/:id', requireAuth, tasksController.updateTask);
@@ -22,8 +25,6 @@ router.post('/:id/pause', requireAuth, tasksController.pauseTask);
 router.post('/:id/save', requireAuth, tasksController.saveTask);
 router.delete('/:id/save', requireAuth, tasksController.unsaveTask);
 
-// Boost/feature a task - requireTaskOwnership checks req.params.id against
-// the authenticated user server-side, same as every other owner-only action.
 router.post('/:id/boost', requireAuth, requireTaskOwnership, tasksController.boostTask);
 
 router.post('/:taskId/applications', requireAuth, requireVerifiedEmail, validate(applyToTaskSchema), applicationsController.applyToTask);
