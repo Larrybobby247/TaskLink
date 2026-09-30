@@ -84,7 +84,6 @@ export async function searchTasks({
   const effectiveSort = { isFeatured: -1, ...(sortMap[sort] || sortMap.newest) };
 
   const [items, total] = await Promise.all([
-<<<<<<< HEAD
       // FIX: `client` must be populated here (not just `category`) so the
       // frontend's `isOwner` check (task.client._id === current user) actually
       // works in list views (Home, Browse) - without this, every list showed
@@ -97,31 +96,6 @@ export async function searchTasks({
       Task.countDocuments(filter),
     ]);
   return { items, total };
-=======
-    Task.find(filter).sort(effectiveSort).skip(skip).limit(limit).populate('category').lean(),
-    Task.countDocuments(filter),
-  ]);
-
-  const annotated = await annotateWithApplicationStatus(items, viewerId);
-  return { items: annotated, total };
-}
-
-/**
- * Attaches `hasApplied` to every task in one extra query (not one per card),
- * covering the whole page of results at once.
- */
-async function annotateWithApplicationStatus(tasks, viewerId) {
-  if (!viewerId || tasks.length === 0) {
-    return tasks.map((t) => ({ ...t, hasApplied: false }));
-  }
-  const applications = await Application.find({
-    worker: viewerId,
-    task: { $in: tasks.map((t) => t._id) },
-  }).select('task').lean();
-
-  const appliedTaskIds = new Set(applications.map((a) => String(a.task)));
-  return tasks.map((t) => ({ ...t, hasApplied: appliedTaskIds.has(String(t._id)) }));
->>>>>>> 468ff04e6ba1caa299f5eb137e920535c894f127
 }
 
 export async function saveTask(userId, taskId) {
