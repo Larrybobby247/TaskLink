@@ -11,7 +11,8 @@ const platformSettingSchema = new Schema(
     freeApplicationLimit: { type: Number, default: 10 },
     withdrawalFeeKobo: { type: Number, default: 0 },
     proMonthlyPriceKobo: { type: Number, default: 250000 },
-    featuredTaskPriceKobo: { type: Number, default: 100000 },
+    featuredTaskPriceKobo: { type: Number, default: 100000 }, // ₦1,000 default boost fee
+    featuredTaskDurationDays: { type: Number, default: 7 }, // how long a boost lasts once paid for
     maxAttachmentSizeMb: { type: Number, default: 5 },
     maxRevisions: { type: Number, default: 3 },
     supportedLocations: [{ type: String }],

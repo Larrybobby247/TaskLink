@@ -20,6 +20,11 @@ export const getMessages = asyncHandler(async (req, res) => {
   return paginated(res, items, { page, limit, total });
 });
 
+export const markConversationRead = asyncHandler(async (req, res) => {
+  await chatService.markConversationRead(req.user._id, req.params.conversationId);
+  return ok(res, { success: true });
+});
+
 export const sendMessage = asyncHandler(async (req, res) => {
   const result = await chatService.sendMessage(req.user._id, req.params.conversationId, req.body);
   return created(res, result);

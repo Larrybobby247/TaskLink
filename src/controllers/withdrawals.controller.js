@@ -11,8 +11,11 @@ export const requestWithdrawal = asyncHandler(async (req, res) => {
 });
 
 export const addBankAccount = asyncHandler(async (req, res) => {
-  const profile = await withdrawalService.addBankAccount(req.user._id, req.body);
-  return ok(res, { workerProfile: profile });
+  const user = await withdrawalService.addBankAccount(req.user._id, req.body);
+  return ok(res, {
+    user: user.toSafeJSON(),
+    bankDetails: user.bankDetails,
+  });
 });
 
 export const listBanks = asyncHandler(async (req, res) => {

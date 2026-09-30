@@ -8,6 +8,7 @@ const router = Router();
 
 router.get('/conversations', requireAuth, messagesController.listConversations);
 router.post('/conversations', requireAuth, messagesController.startConversation);
+router.post('/conversations/:conversationId/read', requireAuth, messagesController.markConversationRead);
 router.get('/conversations/:conversationId/messages', requireAuth, messagesController.getMessages);
 router.post('/conversations/:conversationId/messages', requireAuth, validate(sendMessageSchema), messagesController.sendMessage);
 

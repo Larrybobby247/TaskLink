@@ -14,6 +14,14 @@ const userSchema = new Schema(
     location: { type: String, trim: true },
     school: { type: String, trim: true },
 
+    bankDetails: {
+      bankName: { type: String, trim: true },
+      bankCode: { type: String, trim: true },
+      accountNumber: { type: String, trim: true },
+      accountName: { type: String, trim: true },
+      updatedAt: { type: Date },
+    },
+
     // Interface preference only. Backend authorization NEVER relies solely on this.
     currentMode: { type: String, enum: ['client', 'worker'], default: 'client' },
 

@@ -15,6 +15,7 @@ import subscriptionsRoutes from './subscriptions.routes.js';
 import categoriesRoutes from './categories.routes.js';
 import uploadsRoutes from './uploads.routes.js';
 import reportsRoutes from './reports.routes.js';
+import settingsRoutes from './settings.routes.js';
 import adminRoutes from './admin.routes.js';
 
 const router = Router();
@@ -35,6 +36,7 @@ router.use('/subscriptions', subscriptionsRoutes);
 router.use('/categories', categoriesRoutes);
 router.use('/uploads', uploadsRoutes);
 router.use('/reports', reportsRoutes);
+router.use('/settings', settingsRoutes);
 router.use('/admin', adminRoutes);
 
 export default router;
