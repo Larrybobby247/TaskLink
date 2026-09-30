@@ -5,6 +5,7 @@ import { requireAuth } from '../middleware/auth.middleware.js';
 import { authLimiter, codeRequestLimiter } from '../middleware/rateLimiter.middleware.js';
 import {
   registerSchema, loginSchema, verifyEmailSchema, resendCodeSchema, forgotPasswordSchema, resetPasswordSchema,
+  changePasswordSchema,
 } from '../validators/auth.validators.js';
 
 const router = Router();
