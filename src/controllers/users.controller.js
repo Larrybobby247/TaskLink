@@ -70,3 +70,15 @@ export const updateNotificationPreferences = asyncHandler(async (req, res) => {
   );
   return ok(res, { user: user.toSafeJSON() });
 });
+
+
+/**
+ * Self-service deactivation (distinct from admin.controller.js#deactivateUser,
+ * which is an admin acting on someone else's account). Clears the auth
+ * cookie too, since a deactivated account can no longer authenticate anyway.
+ */
+export const deactivateSelf = asyncHandler(async (req, res) => {
+  await User.updateOne({ _id: req.user._id }, { accountStatus: 'DEACTIVATED' });
+  clearAuthCookie(res);
+  return ok(res, { message: 'Your account has been deactivated.' });
+});

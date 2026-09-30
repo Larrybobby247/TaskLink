@@ -12,6 +12,7 @@ router.patch('/profile', requireAuth, validate(updateProfileSchema), usersContro
 router.post('/profile/image', requireAuth, uploadSingle('image'), usersController.uploadProfileImage);
 router.post('/mode', requireAuth, validate(switchModeSchema), usersController.switchMode);
 router.patch('/notifications-preferences', requireAuth, usersController.updateNotificationPreferences);
+router.post('/deactivate', requireAuth, usersController.deactivateSelf);
 
 router.get('/worker-profile/me', requireAuth, usersController.getMyWorkerProfile);
 router.patch('/worker-profile/me', requireAuth, validate(updateWorkerProfileSchema), usersController.updateWorkerProfile);

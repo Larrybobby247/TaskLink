@@ -48,6 +48,10 @@ const userSchema = new Schema(
     },
 
     lastLoginAt: { type: Date },
+    // Set on roughly every authenticated request (throttled - see
+    // middleware/auth.middleware.js) so admins see genuine "last seen"
+    // activity, not just the last time someone typed a password.
+    lastActiveAt: { type: Date },
   },
   { timestamps: true }
 );

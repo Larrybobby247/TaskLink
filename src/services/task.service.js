@@ -58,9 +58,17 @@ export async function searchTasks({
   };
 
   const [items, total] = await Promise.all([
-    Task.find(filter).sort(sortMap[sort] || sortMap.newest).skip(skip).limit(limit).populate('category'),
-    Task.countDocuments(filter),
-  ]);
+      // FIX: `client` must be populated here (not just `category`) so the
+      // frontend's `isOwner` check (task.client._id === current user) actually
+      // works in list views (Home, Browse) - without this, every list showed
+      // "Apply" even on the client's own tasks, because task.client was just a
+      // raw ObjectId string with no `_id` property to compare against.
+      Task.find(filter).sort(effectiveSort).skip(skip).limit(limit)
+        .populate('category')
+        .populate('client', 'fullName username profileImage')
+        .lean(),
+      Task.countDocuments(filter),
+    ]);
   return { items, total };
 }
 

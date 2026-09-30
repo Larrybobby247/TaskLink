@@ -165,3 +165,26 @@ export const resetPassword = asyncHandler(async (req, res) => {
 
   return ok(res, { message: 'Password reset successful. You can now log in.' });
 });
+
+/**
+ * A signed-in user changing their own password from Settings - distinct from
+ * resetPassword above (which is for the forgot-password token flow and
+ * doesn't require knowing the current password). requireAuth already
+ * confirmed the session, but we still ask for the current password as a
+ * standard extra confirmation for a sensitive action.
+ */
+export const changePassword = asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  const user = await User.findById(req.user._id).select('+passwordHash');
+
+  const isValid = await comparePassword(currentPassword, user.passwordHash);
+  if (!isValid) throw new AppError('Current password is incorrect', 400);
+
+  user.passwordHash = await hashPassword(newPassword);
+  await user.save();
+
+  emailService.sendSecurityAlert(user, 'Your password was just changed. If this was not you, contact support immediately.');
+
+  return ok(res, { message: 'Password changed successfully.' });
+});
+

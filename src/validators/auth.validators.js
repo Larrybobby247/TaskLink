@@ -39,3 +39,17 @@ export const resetPasswordSchema = z.object({
   message: 'Passwords do not match',
   path: ['confirmPassword'],
 });
+
+// For a signed-in user changing their password from Settings (different from
+// resetPasswordSchema above, which is for the forgot-password token flow).
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Current password is required'),
+  newPassword: z.string().min(8).max(72),
+  confirmPassword: z.string(),
+}).refine((data) => data.newPassword === data.confirmPassword, {
+  message: 'Passwords do not match',
+  path: ['confirmPassword'],
+}).refine((data) => data.currentPassword !== data.newPassword, {
+  message: 'New password must be different from your current password',
+  path: ['newPassword'],
+});

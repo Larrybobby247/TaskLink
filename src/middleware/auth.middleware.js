@@ -7,6 +7,16 @@ function extractToken(req) {
   return req.cookies?.[env.jwtCookieName] || req.headers.authorization?.replace('Bearer ', '');
 }
 
+// Only actually writes to the DB at most once every 5 minutes per user, so
+// "last seen" stays meaningful without turning every request into a write.
+const LAST_ACTIVE_THROTTLE_MS = 5 * 60 * 1000;
+function touchLastActive(user) {
+  const last = user.lastActiveAt ? user.lastActiveAt.getTime() : 0;
+  if (Date.now() - last < LAST_ACTIVE_THROTTLE_MS) return;
+  // Never awaited - this must not add latency to the request it's piggybacking on.
+  User.updateOne({ _id: user._id }, { lastActiveAt: new Date() }).catch(() => {});
+}
+
 /** Populates req.user from a verified JWT. Never trust a user id from req.body/query instead. */
 export async function requireAuth(req, res, next) {
   try {
