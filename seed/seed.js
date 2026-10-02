@@ -173,14 +173,14 @@ async function seed() {
       { upsert: true, new: true, runValidators: true }
     );
 
-    // Move only this script's old sample tasks to "Other".
-    // This avoids breaking existing orders or deleting sample task history.
+   
+    // Migrate ALL tasks that reference removed categories to "Other".
+    // This preserves tasks belonging to real users as well as seed users.
     if (removedCategoryIds.length > 0) {
-      console.log('[seed] Checking old sample tasks...');
+      console.log('[seed] Migrating tasks from obsolete categories...');
 
       const migrated = await Task.updateMany(
         {
-          client: client._id,
           category: { $in: removedCategoryIds },
         },
         {
@@ -189,35 +189,32 @@ async function seed() {
       );
 
       console.log(
-        `[seed] Migrated ${migrated.modifiedCount} sample task(s) to Other.`
+        `[seed] Migrated ${migrated.modifiedCount} task(s) to Other.`
       );
 
       // Remove obsolete category IDs from worker profiles.
-      await WorkerProfile.updateMany(
+      const profilesUpdated = await WorkerProfile.updateMany(
         { categories: { $in: removedCategoryIds } },
         { $pull: { categories: { $in: removedCategoryIds } } }
       );
 
-      // Do not delete a category if real or unrelated tasks still use it.
-      const remainingReferences = await Task.find({
+      console.log(
+        `[seed] Updated ${profilesUpdated.modifiedCount} worker profile(s).`
+      );
+
+      // Confirm that no task still references the obsolete categories.
+      const remainingReferences = await Task.countDocuments({
         category: { $in: removedCategoryIds },
-      })
-        .select('_id title category')
-        .limit(10)
-        .lean();
+      });
 
-      if (remainingReferences.length > 0) {
-        const details = remainingReferences
-          .map((task) => `${task.title} (${task._id})`)
-          .join('\n');
-
+      if (remainingReferences > 0) {
         throw new Error(
-          '[seed] Cannot delete old categories because other tasks still ' +
-            `reference them. Review these tasks first:\n${details}`
+          `[seed] Migration incomplete. ${remainingReferences} task(s) ` +
+          'still reference obsolete categories. Categories were not deleted.'
         );
       }
 
-      // Remove obsolete categories only after checking references.
+      // Delete obsolete categories after migration.
       const deletion = await Category.deleteMany({
         _id: { $in: removedCategoryIds },
       });
