@@ -341,8 +341,4 @@ async function seed() {
   }
 }
 
-<<<<<<< HEAD
 seed();
-=======
-seed();
->>>>>>> 2eb9b251d0c3a1a7488a4fa701a077e569cfc462
