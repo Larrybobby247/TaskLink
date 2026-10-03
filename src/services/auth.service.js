@@ -14,7 +14,8 @@ export function setAuthCookie(res, token) {
   res.cookie(env.jwtCookieName, token, {
     httpOnly: true,
     secure: true,
-    sameSite: 'none',
+    sameSite: 'lax',
+    domain: '.tasklink.com.ng',
     maxAge: 7 * 24 * 60 * 60 * 1000,
     path: '/',
   });
@@ -22,6 +23,10 @@ export function setAuthCookie(res, token) {
 
 export function clearAuthCookie(res) {
   res.clearCookie(env.jwtCookieName, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'lax',
+    domain: '.tasklink.com.ng',
     path: '/',
   });
 }
