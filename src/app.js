@@ -18,12 +18,21 @@ export function createApp() {
 
   app.set('trust proxy', 1);
   app.use(helmet());
-  app.use(
-    cors({
-      origin: env.clientUrl,
-      credentials: true,
-    })
-  );
+  const allowedOrigins = [
+  'https://www.tasklink.com.ng',
+  'https://tasklink.com.ng',
+  env.clientUrl,
+].filter(Boolean);
+
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+      return cb(new Error('Not allowed by CORS'));
+    },
+    credentials: true,
+  })
+);
   app.use(compression());
   app.use(morgan(isProd ? 'combined' : 'dev', { stream: { write: (msg) => logger.info(msg.trim()) } }));
 
