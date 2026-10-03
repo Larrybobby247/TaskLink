@@ -21,7 +21,12 @@ export function setAuthCookie(res, token) {
 }
 
 export function clearAuthCookie(res) {
-  res.clearCookie(env.jwtCookieName, { path: '/' });
+  res.clearCookie(env.jwtCookieName, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'none',
+    path: '/',
+  });
 }
 
 export async function hashPassword(password) {
