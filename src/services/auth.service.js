@@ -22,9 +22,6 @@ export function setAuthCookie(res, token) {
 
 export function clearAuthCookie(res) {
   res.clearCookie(env.jwtCookieName, {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'none',
     path: '/',
   });
 }
