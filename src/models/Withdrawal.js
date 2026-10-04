@@ -11,6 +11,7 @@ const withdrawalSchema = new Schema(
     netAmountKobo: { type: Number, required: true },
     bankName: { type: String, required: true },
     bankCode: { type: String },
+    accountNumber: { type: String, required: true, select: false },
     accountNumberLast4: { type: String, required: true },
     accountName: { type: String, required: true },
     paystackRecipientCode: String,
