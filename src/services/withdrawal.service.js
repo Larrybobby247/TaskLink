@@ -38,6 +38,7 @@ export async function requestWithdrawal(user, amountKobo) {
           netAmountKobo,
           bankName: bankDetails.bankName,
           bankCode: bankDetails.bankCode,
+          accountNumber: bankDetails.accountNumber,
           accountNumberLast4: bankDetails.accountNumber.slice(-4),
           accountName: bankDetails.accountName,
           status: 'PENDING',
