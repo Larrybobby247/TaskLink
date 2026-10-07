@@ -146,7 +146,7 @@ export const listWithdrawals = asyncHandler(async (req, res) => {
   const filter = {};
   if (req.query.status) filter.status = req.query.status;
   const [items, total] = await Promise.all([
-    Withdrawal.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).populate('user', 'fullName username email'),
+    Withdrawal.find(filter).select('+accountNumber').sort({ createdAt: -1 }).skip(skip).limit(limit).populate('user', 'fullName username email'),
     Withdrawal.countDocuments(filter),
   ]);
   return paginated(res, items, { page, limit, total });
