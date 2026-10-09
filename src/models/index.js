@@ -20,3 +20,4 @@ export { VerificationCode } from './VerificationCode.js';
 export { PasswordResetToken } from './PasswordResetToken.js';
 export { AdminActionLog } from './AdminActionLog.js';
 export { ApplicationUsage } from './ApplicationUsage.js';
+export { PushSubscription } from './PushSubscription.js';

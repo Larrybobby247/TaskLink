@@ -17,6 +17,7 @@ import uploadsRoutes from './uploads.routes.js';
 import reportsRoutes from './reports.routes.js';
 import settingsRoutes from './settings.routes.js';
 import adminRoutes from './admin.routes.js';
+import pushRoutes from './push.routes.js';
 
 const router = Router();
 
@@ -38,5 +39,6 @@ router.use('/uploads', uploadsRoutes);
 router.use('/reports', reportsRoutes);
 router.use('/settings', settingsRoutes);
 router.use('/admin', adminRoutes);
+router.use('/push', pushRoutes);
 
 export default router;

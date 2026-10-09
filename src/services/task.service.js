@@ -1,5 +1,6 @@
 import { Task, SavedTask, Application } from '../models/index.js';
 import { AppError } from '../utils/AppError.js';
+import { notifyWorkersOfNewTask } from './taskBroadcast.service.js';
 
 export async function createTask(clientId, payload) {
   return Task.create({ ...payload, client: clientId, status: 'DRAFT' });
@@ -14,6 +15,11 @@ export async function publishTask(clientId, taskId) {
   task.status = 'PUBLISHED';
   task.publishedAt = new Date();
   await task.save();
+
+  // Fire-and-forget: notifying matching workers must never slow down or
+    // fail the publish action itself.
+    notifyWorkersOfNewTask(task).catch(() => {});
+    
   return task;
 }
 

@@ -17,6 +17,11 @@ export const env = {
     webhookSecret: process.env.PAYSTACK_WEBHOOK_SECRET,
     baseUrl: process.env.PAYSTACK_BASE_URL || 'https://api.paystack.co',
   },
+  push: {
+  publicKey: process.env.PUSH_VAPID_PUBLIC_KEY,
+  privateKey: process.env.PUSH_VAPID_PRIVATE_KEY,
+  subject: process.env.PUSH_VAPID_SUBJECT || 'mailto:support@tasklink.ng',
+},
   cloudinary: {
     cloudName: process.env.CLOUDINARY_CLOUD_NAME,
     apiKey: process.env.CLOUDINARY_API_KEY,
