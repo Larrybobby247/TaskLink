@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import * as workersController from '../controllers/workers.controller.js';
-import { requireAuth } from '../middleware/auth.middleware.js';
+import { requireAuth, requireVerifiedEmail} from '../middleware/auth.middleware.js';
 
 const router = Router();
 
