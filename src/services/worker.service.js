@@ -203,21 +203,41 @@ export async function getWorkerPublicProfile(userIdentifier) {
 
   const identifier = userIdentifier.trim();
   const lookupConditions = [{ username: identifier.toLowerCase() }];
+
   if (/^[0-9a-fA-F]{24}$/.test(identifier)) {
     lookupConditions.unshift({ _id: new mongoose.Types.ObjectId(identifier) });
   }
 
-  const user = await User.findOne({ $or: lookupConditions }).select(`${PUBLIC_USER_FIELDS} accountStatus`);
-  if (!user || user.accountStatus !== 'ACTIVE') {
+  const userDoc = await User.findOne({ $or: lookupConditions })
+    .select(`${PUBLIC_USER_FIELDS} accountStatus`);
+
+  if (!userDoc || userDoc.accountStatus !== 'ACTIVE') {
     throw new AppError('Worker not found', 404);
   }
 
-  const profile = await WorkerProfile.findOne({ user: user._id })
+  // Build a plain public-safe object so the controller never calls
+  // toPublicJSON() on a non-Mongoose object.
+  const user = {
+    _id: userDoc._id,
+    fullName: userDoc.fullName,
+    username: userDoc.username,
+    profileImage: userDoc.profileImage,
+    bio: userDoc.bio,
+    location: userDoc.location,
+    identityVerified: userDoc.identityVerified,
+    rating: userDoc.rating,
+    reviewCount: userDoc.reviewCount,
+    completedTasksAsWorker: userDoc.completedTasksAsWorker,
+    completedTasksAsClient: userDoc.completedTasksAsClient,
+    createdAt: userDoc.createdAt,
+  };
+
+  const profile = await WorkerProfile.findOne({ user: userDoc._id })
     .select('-bankAccount')
     .populate('categories')
     .lean();
 
-  return { user, profile };
+  return { user, profile: profile || null };
 }
 
 // -----------------------------------------------------------------------------
