@@ -2,11 +2,11 @@ import { Router } from 'express';
 import * as workersController from '../controllers/workers.controller.js';
 import { requireAuth, requireVerifiedEmail } from '../middleware/auth.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
-import { hireWorkerSchema } from '../validators/gig.validators.js';
+import { hireWorkerSchema, unifiedSearchQuerySchema } from '../validators/gig.validators.js';
 
 const router = Router();
 
-router.get('/', workersController.searchWorkers);
+router.get('/', validate(unifiedSearchQuerySchema, 'query'), workersController.searchWorkers);
 
 // New (spec ยง13) - placed before "/:id" would be ambiguous with a generic
 // id matcher, but "saved" is not a valid Mongo ObjectId / username collision

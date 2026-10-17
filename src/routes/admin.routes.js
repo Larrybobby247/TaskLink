@@ -20,6 +20,10 @@ router.post('/tasks/:id/flag', adminController.flagTask);
 router.post('/tasks/:id/pause', adminController.adminPauseTask);
 router.delete('/tasks/:id', adminController.adminDeleteTask);
 
+router.get('/gigs', adminController.adminSearchGigs);
+router.post('/gigs/:id/pause', adminController.adminPauseGig);
+router.delete('/gigs/:id', adminController.adminDeleteGig);
+
 router.get('/payments', adminController.listPayments);
 router.get('/withdrawals', adminController.listWithdrawals);
 router.post('/withdrawals/:id/approve', adminController.approveWithdrawal);
