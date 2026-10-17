@@ -18,6 +18,8 @@ import reportsRoutes from './reports.routes.js';
 import settingsRoutes from './settings.routes.js';
 import adminRoutes from './admin.routes.js';
 import pushRoutes from './push.routes.js';
+import gigsRoutes from './gigs.routes.js';
+import searchRoutes from './search.routes.js';
 
 const router = Router();
 
@@ -40,5 +42,7 @@ router.use('/reports', reportsRoutes);
 router.use('/settings', settingsRoutes);
 router.use('/admin', adminRoutes);
 router.use('/push', pushRoutes);
+router.use('/gigs', gigsRoutes);
+router.use('/search', searchRoutes);
 
 export default router;
