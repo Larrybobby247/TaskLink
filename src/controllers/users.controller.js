@@ -14,18 +14,10 @@ export const updateProfile = asyncHandler(async (req, res) => {
 
 export const getPublicProfile = asyncHandler(async (req, res) => {
   const result = await workerService.getWorkerPublicProfile(req.params.id);
-
   if (!result || !result.user) {
-    return res.status(404).json({
-      success: false,
-      message: 'Worker not found',
-    });
+    return res.status(404).json({ success: false, message: 'Worker not found' });
   }
-
-  return ok(res, {
-    user: result.user,
-    workerProfile: result.profile || null,
-  });
+  return ok(res, { user: result.user, workerProfile: result.profile || null });
 });
 
 export const switchMode = asyncHandler(async (req, res) => {
@@ -78,4 +70,14 @@ export const updateNotificationPreferences = asyncHandler(async (req, res) => {
     { new: true }
   );
   return ok(res, { user: user.toSafeJSON() });
+});
+
+/**
+ * Self-service deactivation. Clears auth cookie and stops gigs.
+ */
+export const deactivateSelf = asyncHandler(async (req, res) => {
+  await User.updateOne({ _id: req.user._id }, { accountStatus: 'DEACTIVATED' });
+  await pauseAllGigsForUser(req.user._id);
+  clearAuthCookie(res);
+  return ok(res, { message: 'Your account has been deactivated.' });
 });
