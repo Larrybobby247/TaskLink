@@ -201,34 +201,40 @@ export async function getWorkerPublicProfile(userIdentifier) {
     throw new AppError('Worker not found', 404);
   }
 
-  const identifier = userIdentifier.trim();
-  const lookupConditions = [{ username: identifier.toLowerCase() }];
+  const identifier = userIdentifier.trim().replace(/^@/, ''); // allow leading @
 
+  // If it looks like a 24-char hex id, first try resolving it as a WorkerProfile._id.
+  // This makes the endpoint tolerant of frontends that use the profile id.
+  if (/^[0-9a-fA-F]{24}$/.test(identifier)) {
+    const profileById = await WorkerProfile.findById(identifier).select('user').lean();
+    if (profileById?.user) {
+      const userDoc = await User.findById(profileById.user).select(`${PUBLIC_USER_FIELDS} accountStatus`);
+      if (!userDoc || userDoc.accountStatus !== 'ACTIVE') {
+        throw new AppError('Worker not found', 404);
+      }
+      // convert to plain public-safe user
+      const user = toPublicUser(userDoc.toObject ? userDoc.toObject() : userDoc);
+      const workerProfile = await WorkerProfile.findOne({ user: userDoc._id })
+        .select('-bankAccount')
+        .populate('categories')
+        .lean();
+      return { user, profile: workerProfile || null };
+    }
+    // If not found as a WorkerProfile id, fall through to try treating identifier as a user id below.
+  }
+
+  // Normal lookup: username or user._id
+  const lookupConditions = [{ username: identifier.toLowerCase() }];
   if (/^[0-9a-fA-F]{24}$/.test(identifier)) {
     lookupConditions.unshift({ _id: new mongoose.Types.ObjectId(identifier) });
   }
 
-  const userDoc = await User.findOne({ $or: lookupConditions })
-    .select(`${PUBLIC_USER_FIELDS} accountStatus`);
-
+  const userDoc = await User.findOne({ $or: lookupConditions }).select(`${PUBLIC_USER_FIELDS} accountStatus`);
   if (!userDoc || userDoc.accountStatus !== 'ACTIVE') {
     throw new AppError('Worker not found', 404);
   }
 
-  const user = {
-    _id: userDoc._id,
-    fullName: userDoc.fullName,
-    username: userDoc.username,
-    profileImage: userDoc.profileImage,
-    bio: userDoc.bio,
-    location: userDoc.location,
-    identityVerified: userDoc.identityVerified,
-    rating: userDoc.rating,
-    reviewCount: userDoc.reviewCount,
-    completedTasksAsWorker: userDoc.completedTasksAsWorker,
-    completedTasksAsClient: userDoc.completedTasksAsClient,
-    createdAt: userDoc.createdAt,
-  };
+  const user = toPublicUser(userDoc.toObject ? userDoc.toObject() : userDoc);
 
   const profile = await WorkerProfile.findOne({ user: userDoc._id })
     .select('-bankAccount')
