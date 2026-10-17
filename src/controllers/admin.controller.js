@@ -3,8 +3,12 @@ import { AppError } from '../utils/AppError.js';
 import { ok, paginated } from '../utils/apiResponse.js';
 import { getPagination } from '../utils/AppError.js';
 import {
-  User, Task, Order, Payment, Withdrawal, Subscription, Dispute, Report, AdminActionLog,
+  User, Task, Order, Payment, Withdrawal, Subscription, Dispute, Report, AdminActionLog, Gig,
 } from '../models/index.js';
+import { pauseAllGigsForUser } from '../services/gig.service.js';
+import { deleteAsset } from '../services/upload.service.js';
+import { notify } from '../services/notification.service.js';
+import { escapeRegex } from '../utils/search.js';
 import * as disputeService from '../services/dispute.service.js';
 import * as withdrawalService from '../services/withdrawal.service.js';
 import * as walletService from '../services/wallet.service.js';
@@ -82,6 +86,8 @@ export const verifyUser = asyncHandler(async (req, res) => {
 
 export const suspendUser = asyncHandler(async (req, res) => {
   const user = await User.findByIdAndUpdate(req.params.id, { accountStatus: 'SUSPENDED' }, { new: true });
+  if (!user) throw new AppError('User not found', 404);
+  await pauseAllGigsForUser(user._id);
   await logAdminAction(req, 'SUSPEND_USER', 'User', user._id, { reason: req.body.reason });
   return ok(res, { user: user.toSafeJSON() });
 });
@@ -94,6 +100,8 @@ export const unsuspendUser = asyncHandler(async (req, res) => {
 
 export const deactivateUser = asyncHandler(async (req, res) => {
   const user = await User.findByIdAndUpdate(req.params.id, { accountStatus: 'DEACTIVATED' }, { new: true });
+  if (!user) throw new AppError('User not found', 404);
+  await pauseAllGigsForUser(user._id);
   await logAdminAction(req, 'DEACTIVATE_USER', 'User', user._id);
   return ok(res, { user: user.toSafeJSON() });
 });
@@ -127,6 +135,62 @@ export const adminDeleteTask = asyncHandler(async (req, res) => {
   await Task.findByIdAndDelete(req.params.id);
   await logAdminAction(req, 'DELETE_TASK', 'Task', req.params.id);
   return ok(res, { message: 'Task deleted' });
+});
+
+// --- Gigs (marketplace moderation) ---
+// Every action is written to the audit log. Admin routes are protected by
+// requireAuth + requireAdmin in admin.routes.js.
+export const adminSearchGigs = asyncHandler(async (req, res) => {
+  const { page, limit, skip } = getPagination(req.query);
+  const filter = {};
+
+  if (req.query.status && ['DRAFT', 'PUBLISHED', 'PAUSED'].includes(req.query.status)) {
+    filter.status = req.query.status;
+  }
+  if (typeof req.query.q === 'string' && req.query.q.trim()) {
+    const re = new RegExp(escapeRegex(req.query.q.trim().slice(0, 100)), 'i');
+    const workerIds = await User.distinct('_id', { $or: [{ username: re }, { fullName: re }] });
+    filter.$or = [{ title: re }, { skills: re }, { worker: { $in: workerIds } }];
+  }
+
+  const [items, total] = await Promise.all([
+    Gig.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit)
+      .populate('worker', 'fullName username').populate('category', 'name'),
+    Gig.countDocuments(filter),
+  ]);
+  return paginated(res, items, { page, limit, total });
+});
+
+export const adminPauseGig = asyncHandler(async (req, res) => {
+  const gig = await Gig.findByIdAndUpdate(req.params.id, { status: 'PAUSED' }, { new: true });
+  if (!gig) throw new AppError('Gig not found', 404);
+  await logAdminAction(req, 'PAUSE_GIG', 'Gig', gig._id, { reason: req.body?.reason });
+  await notify({
+    userId: gig.worker,
+    type: 'PLATFORM_ANNOUNCEMENT',
+    title: 'A gig of yours was paused',
+    body: `Your gig "${gig.title}" was paused by TaskLink moderation. Contact support if you think this was a mistake.`,
+  }).catch(() => {});
+  return ok(res, { gig });
+});
+
+export const adminDeleteGig = asyncHandler(async (req, res) => {
+  const gig = await Gig.findById(req.params.id);
+  if (!gig) throw new AppError('Gig not found', 404);
+
+  // Never remove a gig out from under an order that is still in progress.
+  const hasActiveOrder = await Task.exists({
+    gig: gig._id,
+    status: { $in: ['WORKER_SELECTED', 'PAYMENT_PENDING', 'PAYMENT_SECURED', 'IN_PROGRESS', 'SUBMITTED', 'REVISION_REQUESTED', 'DISPUTED'] },
+  });
+  if (hasActiveOrder) {
+    throw new AppError('This gig has an order in progress. Pause it instead of deleting it.', 400);
+  }
+
+  await Promise.all((gig.images || []).map((img) => deleteAsset(img.publicId).catch(() => {})));
+  await gig.deleteOne();
+  await logAdminAction(req, 'DELETE_GIG', 'Gig', gig._id, { title: gig.title, worker: gig.worker });
+  return ok(res, { message: 'Gig deleted' });
 });
 
 // --- Payments / Withdrawals ---

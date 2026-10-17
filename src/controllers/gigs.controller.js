@@ -33,8 +33,9 @@ export const deleteGig = asyncHandler(async (req, res) => {
 });
 
 export const getGig = asyncHandler(async (req, res) => {
-  const gig = await gigService.getGigById(req.params.id);
-  gigService.incrementGigView(gig._id).catch(() => {});
+  const gig = await gigService.getGigById(req.params.id, { viewer: req.user || null });
+  // Owners opening their own gig (editing/previewing) shouldn't inflate its view count.
+  if (!gig.isOwner) gigService.incrementGigView(gig._id).catch(() => {});
   return ok(res, { gig });
 });
 
@@ -71,6 +72,13 @@ export const uploadGigImages = asyncHandler(async (req, res) => {
   const settings = await getPlatformSettings();
   if (gig.images.length + req.files.length > settings.maxGigImages) {
     throw new AppError(`A gig can have at most ${settings.maxGigImages} images`, 400);
+  }
+
+  // Enforce the configurable per-image size limit (platform setting) on the server.
+  const maxBytes = settings.maxGigImageSizeMb * 1024 * 1024;
+  const oversized = req.files.find((file) => file.size > maxBytes);
+  if (oversized) {
+    throw new AppError(`"${oversized.originalname}" is larger than ${settings.maxGigImageSizeMb}MB`, 400);
   }
 
   const uploaded = await Promise.all(

@@ -4,6 +4,8 @@ import { ok } from '../utils/apiResponse.js';
 import { User } from '../models/index.js';
 import * as workerService from '../services/worker.service.js';
 import { uploadBuffer } from '../services/upload.service.js';
+import { clearAuthCookie } from '../services/auth.service.js';
+import { pauseAllGigsForUser } from '../services/gig.service.js';
 
 export const updateProfile = asyncHandler(async (req, res) => {
   const updated = await User.findByIdAndUpdate(req.user._id, req.body, { new: true, runValidators: true });
@@ -11,18 +13,16 @@ export const updateProfile = asyncHandler(async (req, res) => {
 });
 
 export const getPublicProfile = asyncHandler(async (req, res) => {
-  const identifier = req.params.id;
-  const isObjectId = /^[0-9a-fA-F]{24}$/.test(identifier);
-  const user = await User.findOne(isObjectId ? { _id: identifier } : { username: identifier });
-  if (!user) throw new AppError('User not found', 404);
-
-  const profile = await workerService.getOrCreateWorkerProfile(user._id).catch(() => null);
-  return ok(res, { user: user.toSafeJSON(), workerProfile: profile });
+  const result = await workerService.getWorkerPublicProfile(req.params.id);
+  // Public endpoint: allow-listed fields only (it used to return the full user, including bank details).
+  return ok(res, { user: result.user.toPublicJSON(), workerProfile: result.profile });
 });
 
 export const switchMode = asyncHandler(async (req, res) => {
   const { mode } = req.body;
   const user = await User.findByIdAndUpdate(req.user._id, { currentMode: mode }, { new: true });
+  // Workers must have a WorkerProfile to be discoverable in search and to receive saves/hire requests.
+  if (mode === 'worker') await workerService.getOrCreateWorkerProfile(user._id).catch(() => null);
   return ok(res, { user: user.toSafeJSON() });
 });
 
@@ -79,6 +79,7 @@ export const updateNotificationPreferences = asyncHandler(async (req, res) => {
  */
 export const deactivateSelf = asyncHandler(async (req, res) => {
   await User.updateOne({ _id: req.user._id }, { accountStatus: 'DEACTIVATED' });
+  await pauseAllGigsForUser(req.user._id); // a deactivated account's gigs must not stay public
   clearAuthCookie(res);
   return ok(res, { message: 'Your account has been deactivated.' });
 });

@@ -11,7 +11,8 @@ export const searchWorkers = asyncHandler(async (req, res) => {
 
 export const getWorkerProfile = asyncHandler(async (req, res) => {
   const result = await workerService.getWorkerPublicProfile(req.params.id);
-  return ok(res, { user: result.user.toSafeJSON(), workerProfile: result.profile });
+  // toPublicJSON: allow-listed fields only. toSafeJSON() leaked email, phone and bank details here.
+  return ok(res, { user: result.user.toPublicJSON(), workerProfile: result.profile });
 });
 
 
