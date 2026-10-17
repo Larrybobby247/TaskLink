@@ -196,56 +196,15 @@ export async function searchWorkers({
  * (This used to return the whole user document - including email, phone and
  * bank details - to any unauthenticated visitor.)
  */
-export async function getWorkerPublicProfile(userIdentifier) {
-  if (typeof userIdentifier !== 'string' || !userIdentifier.trim()) {
-    throw new AppError('Worker not found', 404);
-  }
+// Allow-list of WorkerProfile fields that may be shown publicly. An inclusive
+// projection is used on purpose: `.select('-bankAccount')` conflicts with the
+// schema-level `select: false` on `bankAccount.accountNumber` (MongoDB
+// "Path collision" error -> 500 -> "Something went wrong" on the profile page).
+const PUBLIC_PROFILE_FIELDS =
+  'user headline skills categories availability portfolio responseRate completionRate isComplete createdAt updatedAt';
 
-  const identifier = userIdentifier.trim().replace(/^@/, '');
-
-  if (/^[0-9a-fA-F]{24}$/.test(identifier)) {
-    const profileById = await WorkerProfile.findById(identifier).select('user').lean();
-    if (profileById?.user) {
-      const userDoc = await User.findById(profileById.user).select(`${PUBLIC_USER_FIELDS} accountStatus`);
-      if (!userDoc || userDoc.accountStatus !== 'ACTIVE') {
-        throw new AppError('Worker not found', 404);
-      }
-
-      const user = {
-        _id: userDoc._id,
-        fullName: userDoc.fullName,
-        username: userDoc.username,
-        profileImage: userDoc.profileImage,
-        bio: userDoc.bio,
-        location: userDoc.location,
-        identityVerified: userDoc.identityVerified,
-        rating: userDoc.rating,
-        reviewCount: userDoc.reviewCount,
-        completedTasksAsWorker: userDoc.completedTasksAsWorker,
-        completedTasksAsClient: userDoc.completedTasksAsClient,
-        createdAt: userDoc.createdAt,
-      };
-
-      const workerProfile = await WorkerProfile.findOne({ user: userDoc._id })
-        .select('-bankAccount')
-        .populate('categories')
-        .lean();
-
-      return { user, profile: workerProfile || null };
-    }
-  }
-
-  const lookupConditions = [{ username: identifier.toLowerCase() }];
-  if (/^[0-9a-fA-F]{24}$/.test(identifier)) {
-    lookupConditions.unshift({ _id: new mongoose.Types.ObjectId(identifier) });
-  }
-
-  const userDoc = await User.findOne({ $or: lookupConditions }).select(`${PUBLIC_USER_FIELDS} accountStatus`);
-  if (!userDoc || userDoc.accountStatus !== 'ACTIVE') {
-    throw new AppError('Worker not found', 404);
-  }
-
-  const user = {
+function toPublicProfileUser(userDoc) {
+  return {
     _id: userDoc._id,
     fullName: userDoc.fullName,
     username: userDoc.username,
@@ -259,13 +218,40 @@ export async function getWorkerPublicProfile(userIdentifier) {
     completedTasksAsClient: userDoc.completedTasksAsClient,
     createdAt: userDoc.createdAt,
   };
+}
+
+export async function getWorkerPublicProfile(userIdentifier) {
+  if (typeof userIdentifier !== 'string' || !userIdentifier.trim()) {
+    throw new AppError('Worker not found', 404);
+  }
+
+  const identifier = userIdentifier.trim().replace(/^@/, '');
+  const isObjectId = /^[0-9a-fA-F]{24}$/.test(identifier);
+  const userSelect = `${PUBLIC_USER_FIELDS} accountStatus`;
+
+  let userDoc = null;
+
+  if (isObjectId) {
+    // The id may be a user id or a worker-profile id.
+    userDoc = await User.findById(identifier).select(userSelect);
+    if (!userDoc) {
+      const profileById = await WorkerProfile.findById(identifier).select('user').lean();
+      if (profileById?.user) userDoc = await User.findById(profileById.user).select(userSelect);
+    }
+  } else {
+    userDoc = await User.findOne({ username: identifier.toLowerCase() }).select(userSelect);
+  }
+
+  if (!userDoc || userDoc.accountStatus !== 'ACTIVE') {
+    throw new AppError('Worker not found', 404);
+  }
 
   const profile = await WorkerProfile.findOne({ user: userDoc._id })
-    .select('-bankAccount')
-    .populate('categories')
+    .select(PUBLIC_PROFILE_FIELDS)
+    .populate({ path: 'categories', select: 'name slug icon color' })
     .lean();
 
-  return { user, profile: profile || null };
+  return { user: toPublicProfileUser(userDoc), profile: profile || null };
 }
 // -----------------------------------------------------------------------------
 // Saved workers
