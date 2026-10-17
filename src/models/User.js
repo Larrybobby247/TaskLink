@@ -73,4 +73,27 @@ userSchema.methods.toSafeJSON = function toSafeJSON() {
   return obj;
 };
 
+// Allow-list of fields that are safe to show to anyone (public profile pages,
+// search results). NEVER add email, phone, bankDetails, plan expiry, referral
+// data or notification preferences here.
+export const PUBLIC_USER_FIELDS =
+  'fullName username profileImage bio location identityVerified rating reviewCount completedTasksAsWorker completedTasksAsClient createdAt';
+
+userSchema.methods.toPublicJSON = function toPublicJSON() {
+  return {
+    _id: this._id,
+    fullName: this.fullName,
+    username: this.username,
+    profileImage: this.profileImage,
+    bio: this.bio,
+    location: this.location,
+    identityVerified: this.identityVerified,
+    rating: this.rating,
+    reviewCount: this.reviewCount,
+    completedTasksAsWorker: this.completedTasksAsWorker,
+    completedTasksAsClient: this.completedTasksAsClient,
+    createdAt: this.createdAt,
+  };
+};
+
 export const User = mongoose.model('User', userSchema);

@@ -58,5 +58,7 @@ const gigSchema = new Schema(
 gigSchema.index({ title: 'text', description: 'text', skills: 'text' });
 gigSchema.index({ category: 1, status: 1, createdAt: -1 });
 gigSchema.index({ worker: 1, status: 1 });
+gigSchema.index({ status: 1, createdAt: -1 });
+gigSchema.index({ status: 1, startingPriceKobo: 1 });
 
 export const Gig = mongoose.model('Gig', gigSchema);
