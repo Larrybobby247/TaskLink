@@ -215,8 +215,6 @@ export async function getWorkerPublicProfile(userIdentifier) {
     throw new AppError('Worker not found', 404);
   }
 
-  // Build a plain public-safe object so the controller never calls
-  // toPublicJSON() on a non-Mongoose object.
   const user = {
     _id: userDoc._id,
     fullName: userDoc.fullName,
@@ -239,7 +237,6 @@ export async function getWorkerPublicProfile(userIdentifier) {
 
   return { user, profile: profile || null };
 }
-
 // -----------------------------------------------------------------------------
 // Saved workers
 // -----------------------------------------------------------------------------
