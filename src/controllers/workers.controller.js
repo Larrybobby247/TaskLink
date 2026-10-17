@@ -11,18 +11,10 @@ export const searchWorkers = asyncHandler(async (req, res) => {
 
 export const getWorkerProfile = asyncHandler(async (req, res) => {
   const result = await workerService.getWorkerPublicProfile(req.params.id);
-
   if (!result || !result.user) {
-    return res.status(404).json({
-      success: false,
-      message: 'Worker not found',
-    });
+    return res.status(404).json({ success: false, message: 'Worker not found' });
   }
-
-  return ok(res, {
-    user: result.user,
-    workerProfile: result.profile || null,
-  });
+  return ok(res, { user: result.user, workerProfile: result.profile || null });
 });
 
 // --- New: saved workers (spec §13) ---
