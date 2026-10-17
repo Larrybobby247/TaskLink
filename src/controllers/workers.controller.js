@@ -25,7 +25,6 @@ export const getWorkerProfile = asyncHandler(async (req, res) => {
   });
 });
 
-
 // --- New: saved workers (spec §13) ---
 
 export const saveWorker = asyncHandler(async (req, res) => {
@@ -49,4 +48,4 @@ export const getSavedWorkers = asyncHandler(async (req, res) => {
 export const hireWorker = asyncHandler(async (req, res) => {
   const order = await workerService.hireWorker(req.user, req.params.id, req.body);
   return created(res, { order });
-})
+});
