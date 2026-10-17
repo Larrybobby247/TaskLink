@@ -7,9 +7,13 @@ import {
   Task,
   Application,
   SavedWorker,
+  Category,
+  Gig,
 } from '../models/index.js';
+import { PUBLIC_USER_FIELDS } from '../models/User.js';
 
 import { AppError } from '../utils/AppError.js';
+import { escapeRegex, tokenizeQuery } from '../utils/search.js';
 import { selectWorker } from './order.service.js';
 
 export async function getOrCreateWorkerProfile(userId) {
@@ -53,21 +57,30 @@ export async function updateWorkerProfile(userId, payload) {
   return profile;
 }
 
+// Only these user fields may ever appear in search results / public profiles.
+// (Never email, phone, bank details, plan expiry, referral data...)
+const PUBLIC_USER_KEYS = PUBLIC_USER_FIELDS.split(' ');
+
+function toPublicUser(user) {
+  const out = { _id: user._id };
+  for (const key of PUBLIC_USER_KEYS) if (user[key] !== undefined) out[key] = user[key];
+  return out;
+}
+
 /**
- * Search worker profiles using user-level and profile-level filters.
+ * Search workers (spec section 3).
  *
- * User-level filters:
- * - q
- * - location
- * - minRating
+ * Free text `q` is matched case-insensitively and PARTIALLY against the
+ * username, display name, headline, skills, service category names and the
+ * titles/skills of the worker's published gigs. Every word must match
+ * somewhere. An exact username match is ranked first, so searching
+ * "larrydev" puts @larrydev on top and "larry" still finds him.
+ * (The previous Mongo $text search only matched whole words, so partial
+ * usernames never matched.)
  *
- * Worker-profile filters:
- * - skill
- * - category
- * - availability
- *
- * Gig pricing filters should be applied in gig.service.js because
- * prices belong to individual gigs, not to worker profiles.
+ * Only ACTIVE accounts are returned, and no private fields are ever included.
+ * Each result also carries the worker's real published-gig count and lowest
+ * published gig price, computed from the Gig collection (never invented).
  */
 export async function searchWorkers({
   q,
@@ -76,104 +89,133 @@ export async function searchWorkers({
   location,
   minRating,
   availability,
-  page,
-  limit,
-  skip,
+  minPriceKobo,
+  maxPriceKobo,
+  skip = 0,
+  limit = 20,
 }) {
-  const userFilter = {};
+  const terms = tokenizeQuery(q);
+  const exactUsername = typeof q === 'string' ? q.trim().toLowerCase().replace(/^@/, '') : '';
 
-  if (q) {
-    userFilter.$text = { $search: q };
+  const profileMatch = {};
+  if (skill) profileMatch.skills = String(skill).toLowerCase();
+  if (category) profileMatch.categories = new mongoose.Types.ObjectId(category);
+  if (availability) profileMatch.availability = availability;
+
+  if (minPriceKobo || maxPriceKobo) {
+    const range = {};
+    if (minPriceKobo) range.$gte = Number(minPriceKobo);
+    if (maxPriceKobo) range.$lte = Number(maxPriceKobo);
+    profileMatch.user = { $in: await Gig.distinct('worker', { status: 'PUBLISHED', startingPriceKobo: range }) };
   }
 
-  if (location) {
-    const escapedLocation = String(location).replace(
-      /[.*+?^${}()|[\]\\]/g,
-      '\\$&'
-    );
-
-    userFilter.location = new RegExp(escapedLocation, 'i');
+  const userMatch = { 'user.accountStatus': 'ACTIVE' };
+  if (location) userMatch['user.location'] = new RegExp(escapeRegex(location), 'i');
+  if (minRating !== undefined && minRating !== '' && Number.isFinite(Number(minRating))) {
+    userMatch['user.rating'] = { $gte: Number(minRating) };
   }
 
-  if (minRating !== undefined && minRating !== '') {
-    const rating = Number(minRating);
+  const termClauses = [];
+  for (const term of terms) {
+    const re = new RegExp(escapeRegex(term), 'i');
+    const options = [{ 'user.username': re }, { 'user.fullName': re }, { headline: re }, { skills: re }];
 
-    if (Number.isFinite(rating)) {
-      userFilter.rating = { $gte: rating };
+    if (term.length >= 2) {
+      const [categoryIds, gigWorkerIds] = await Promise.all([
+        Category.distinct('_id', { name: re }),
+        Gig.distinct('worker', { status: 'PUBLISHED', $or: [{ title: re }, { skills: re }] }),
+      ]);
+      if (categoryIds.length) options.push({ categories: { $in: categoryIds } });
+      if (gigWorkerIds.length) options.push({ 'user._id': { $in: gigWorkerIds } });
     }
+    termClauses.push({ $or: options });
   }
 
-  const profileFilter = {};
-
-  if (skill) {
-    profileFilter.skills = String(skill).toLowerCase();
-  }
-
-  if (category) {
-    profileFilter.categories = category;
-  }
-
-  if (availability) {
-    profileFilter.availability = availability;
-  }
-
-  // Find users matching user-level criteria first.
-  const matchingUsers = await User.find(userFilter)
-    .select('_id')
-    .lean();
-
-  profileFilter.user = {
-    $in: matchingUsers.map((user) => user._id),
-  };
-
-  const [items, total] = await Promise.all([
-    WorkerProfile.find(profileFilter)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .populate(
-        'user',
-        'fullName username profileImage rating reviewCount completedTasksAsWorker location identityVerified'
-      )
-      .populate('categories'),
-
-    WorkerProfile.countDocuments(profileFilter),
+  const [result] = await WorkerProfile.aggregate([
+    { $match: profileMatch },
+    { $lookup: { from: User.collection.name, localField: 'user', foreignField: '_id', as: 'user' } },
+    { $unwind: '$user' },
+    { $match: { ...userMatch, ...(termClauses.length ? { $and: termClauses } : {}) } },
+    { $addFields: { exactUsername: { $cond: [{ $eq: ['$user.username', exactUsername] }, 1, 0] } } },
+    {
+      $sort: {
+        exactUsername: -1,
+        'user.rating': -1,
+        'user.completedTasksAsWorker': -1,
+        createdAt: -1,
+        _id: 1,
+      },
+    },
+    {
+      $facet: {
+        items: [{ $skip: skip }, { $limit: limit }],
+        total: [{ $count: 'n' }],
+      },
+    },
   ]);
+
+  const rawItems = result?.items || [];
+  const total = result?.total?.[0]?.n || 0;
+  if (!rawItems.length) return { items: [], total };
+
+  const workerIds = rawItems.map((p) => p.user._id);
+  const categoryIds = [...new Set(rawItems.flatMap((p) => (p.categories || []).map(String)))];
+
+  const [categories, gigStats] = await Promise.all([
+    Category.find({ _id: { $in: categoryIds } }).select('name slug icon').lean(),
+    Gig.aggregate([
+      { $match: { worker: { $in: workerIds }, status: 'PUBLISHED' } },
+      { $group: { _id: '$worker', count: { $sum: 1 }, minPrice: { $min: '$startingPriceKobo' } } },
+    ]),
+  ]);
+  const categoryById = new Map(categories.map((c) => [String(c._id), c]));
+  const statsByWorker = new Map(gigStats.map((g) => [String(g._id), g]));
+
+  const items = rawItems.map((p) => {
+    const stats = statsByWorker.get(String(p.user._id));
+    return {
+      _id: p._id,
+      user: toPublicUser(p.user),
+      headline: p.headline,
+      skills: p.skills || [],
+      categories: (p.categories || []).map((id) => categoryById.get(String(id))).filter(Boolean),
+      availability: p.availability,
+      isComplete: p.isComplete,
+      publishedGigCount: stats?.count || 0,
+      startingPriceKobo: stats?.minPrice || null,
+    };
+  });
 
   return { items, total };
 }
 
+/**
+ * Public worker profile, looked up by user id OR username (case-insensitive).
+ * Returns ONLY allow-listed user fields and never the worker's payout/bank
+ * details. Suspended/deactivated accounts are not public.
+ * (This used to return the whole user document - including email, phone and
+ * bank details - to any unauthenticated visitor.)
+ */
 export async function getWorkerPublicProfile(userIdentifier) {
-  if (
-    typeof userIdentifier !== 'string' ||
-    !userIdentifier.trim()
-  ) {
+  if (typeof userIdentifier !== 'string' || !userIdentifier.trim()) {
     throw new AppError('Worker not found', 404);
   }
 
   const identifier = userIdentifier.trim();
-
-  const lookupConditions = [
-    { username: identifier },
-  ];
-
+  const lookupConditions = [{ username: identifier.toLowerCase() }];
   if (/^[0-9a-fA-F]{24}$/.test(identifier)) {
-    lookupConditions.unshift({
-      _id: new mongoose.Types.ObjectId(identifier),
-    });
+    lookupConditions.unshift({ _id: new mongoose.Types.ObjectId(identifier) });
   }
 
-  const user = await User.findOne({
-    $or: lookupConditions,
-  }).select('-passwordHash');
-
-  if (!user) {
+  const user = await User.findOne({ $or: lookupConditions }).select(`${PUBLIC_USER_FIELDS} accountStatus`);
+  if (!user || user.accountStatus !== 'ACTIVE') {
     throw new AppError('Worker not found', 404);
   }
 
-  const profile = await WorkerProfile.findOne({
-    user: user._id,
-  }).populate('categories');
+  const profile = await WorkerProfile.findOne({ user: user._id })
+    .select('-bankAccount')
+    .populate('categories')
+    .lean();
 
   return { user, profile };
 }
@@ -309,11 +351,19 @@ export async function hireWorker(
   }
 
   const worker = await User.findById(workerId)
-    .select('_id')
+    .select('_id accountStatus')
     .lean();
 
-  if (!worker) {
+  if (!worker || worker.accountStatus !== 'ACTIVE') {
     throw new AppError('Worker not found', 404);
+  }
+
+  const workerProfile = await WorkerProfile.findOne({ user: workerId })
+    .select('availability')
+    .lean();
+
+  if (workerProfile?.availability === 'UNAVAILABLE') {
+    throw new AppError("This worker isn't taking new work right now", 400);
   }
 
   const session = await mongoose.startSession();
