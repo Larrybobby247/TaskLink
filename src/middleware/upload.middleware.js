@@ -23,3 +23,19 @@ export const uploadSingle = (fieldName) =>
 
 export const uploadMultiple = (fieldName, maxCount = 5) =>
   multer({ storage, fileFilter, limits: { fileSize: MAX_FILE_SIZE_BYTES } }).array(fieldName, maxCount);
+
+// Gig images must be real images. The generic uploader above also accepts
+// PDFs/Word files (needed for task attachments), which must not become gig images.
+const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
+function imageFilter(req, file, cb) {
+  if (!IMAGE_MIME_TYPES.includes(file.mimetype)) {
+    return cb(new AppError('Only JPG, PNG or WebP images are allowed', 400));
+  }
+  cb(null, true);
+}
+
+// The hard multer cap is generous; the exact per-plan size limit (platform
+// setting maxGigImageSizeMb) is enforced in the controller.
+export const uploadImages = (fieldName, maxCount = 5) =>
+  multer({ storage, fileFilter: imageFilter, limits: { fileSize: 10 * 1024 * 1024, files: maxCount } }).array(fieldName, maxCount);
