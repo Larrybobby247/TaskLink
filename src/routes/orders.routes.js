@@ -4,7 +4,7 @@ import { requireAuth } from '../middleware/auth.middleware.js';
 import { requireOrderParticipant } from '../middleware/ownership.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
 import {
-  submitWorkSchema, requestRevisionSchema, cancelOrderSchema, reviewSchema, openDisputeSchema,
+  submitWorkSchema, requestRevisionSchema, submitPlanSchema, respondToPlanSchema, declineWorkerSchema, cancelOrderSchema, reviewSchema, openDisputeSchema,
 } from '../validators/order.validators.js';
 
 const router = Router();
@@ -14,6 +14,9 @@ router.get('/client', requireAuth, ordersController.getMyOrdersAsClient);
 router.get('/worker', requireAuth, ordersController.getMyOrdersAsWorker);
 router.get('/:id', requireAuth, requireOrderParticipant, ordersController.getOrder);
 
+router.post('/:id/plan', requireAuth, requireOrderParticipant, validate(submitPlanSchema), ordersController.submitPlan);
+router.post('/:id/plan/respond', requireAuth, requireOrderParticipant, validate(respondToPlanSchema), ordersController.respondToPlan);
+router.post('/:id/decline-worker', requireAuth, requireOrderParticipant, validate(declineWorkerSchema), ordersController.declineWorker);
 router.post('/:id/submit', requireAuth, requireOrderParticipant, validate(submitWorkSchema), ordersController.submitWork);
 router.post('/:id/revision', requireAuth, requireOrderParticipant, validate(requestRevisionSchema), ordersController.requestRevision);
 router.post('/:id/approve', requireAuth, requireOrderParticipant, ordersController.approveOrder);

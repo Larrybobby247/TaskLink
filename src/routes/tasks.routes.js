@@ -4,7 +4,7 @@ import * as applicationsController from '../controllers/applications.controller.
 import { requireAuth, requireVerifiedEmail, attachUserIfPresent } from '../middleware/auth.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
 import { requireTaskOwnership } from '../middleware/ownership.middleware.js';
-import { createTaskSchema, applyToTaskSchema, searchTasksQuerySchema } from '../validators/task.validators.js';
+import { createTaskSchema, updateTaskSchema, applyToTaskSchema, searchTasksQuerySchema } from '../validators/task.validators.js';
 
 const router = Router();
 
@@ -17,7 +17,7 @@ router.get('/mine', requireAuth, tasksController.getMyTasks);
 router.get('/:id', attachUserIfPresent, tasksController.getTask);
 
 router.post('/', requireAuth, requireVerifiedEmail, validate(createTaskSchema), tasksController.createTask);
-router.patch('/:id', requireAuth, tasksController.updateTask);
+router.patch('/:id', requireAuth, validate(updateTaskSchema), tasksController.updateTask);
 router.delete('/:id', requireAuth, tasksController.deleteTask);
 router.post('/:id/publish', requireAuth, tasksController.publishTask);
 router.post('/:id/pause', requireAuth, tasksController.pauseTask);
