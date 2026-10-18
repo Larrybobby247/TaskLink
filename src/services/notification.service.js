@@ -8,6 +8,7 @@ import { sendPushToUser } from './push.service.js';
  * than guessing a client-only or worker-only route for the recipient. */
 function deriveUrl(entityType, entityId) {
   if (entityType === 'TASK' && entityId) return `/tasks/${entityId}`;
+  if (entityType === 'ORDER' && entityId) return `/client/orders/${entityId}`;
   return '/notifications';
 }
 

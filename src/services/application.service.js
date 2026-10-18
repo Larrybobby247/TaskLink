@@ -92,6 +92,9 @@ export async function shortlistApplication(clientId, applicationId) {
   const application = await Application.findById(applicationId).populate('task');
   if (!application) throw new AppError('Application not found', 404);
   if (String(application.task.client) !== String(clientId)) throw new AppError('Not authorized', 403);
+  if (!['PENDING', 'SHORTLISTED'].includes(application.status)) {
+    throw new AppError(`Cannot shortlist an application in status ${application.status}`, 400);
+  }
   application.status = 'SHORTLISTED';
   await application.save();
   return application;
@@ -101,6 +104,9 @@ export async function rejectApplication(clientId, applicationId) {
   const application = await Application.findById(applicationId).populate('task');
   if (!application) throw new AppError('Application not found', 404);
   if (String(application.task.client) !== String(clientId)) throw new AppError('Not authorized', 403);
+  if (!['PENDING', 'SHORTLISTED'].includes(application.status)) {
+    throw new AppError(`Cannot reject an application in status ${application.status}`, 400);
+  }
 
   application.status = 'REJECTED';
   application.rejectedAt = new Date();

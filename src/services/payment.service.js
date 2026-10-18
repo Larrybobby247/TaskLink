@@ -3,7 +3,7 @@ import { Payment, Order, Subscription, User, Task } from '../models/index.js';
 import { AppError } from '../utils/AppError.js';
 import * as paystack from './paystack.service.js';
 import { generateReference } from '../utils/crypto.js';
-import { markOrderPaid } from './order.service.js';
+import { markOrderPaid, rejectOtherApplicants } from './order.service.js';
 import { notify } from './notification.service.js';
 import { emailService } from './email.service.js';
 import { getPlatformSettings } from './platformSettings.service.js';
@@ -17,7 +17,23 @@ export async function initializeOrderPayment(user, orderId) {
   if (!order) throw new AppError('Order not found', 404);
   if (String(order.client) !== String(user._id)) throw new AppError('Only the client on this order can pay for it', 403);
   if (order.paymentStatus === 'PAID') throw new AppError('This order has already been paid for', 400);
-  if (!['AWAITING_PAYMENT'].includes(order.status)) {
+
+  const milestones = order.plan?.useMilestones ? order.plan.milestones : [];
+  let amountKobo = order.agreedAmountKobo;
+  let platformFeeKobo = order.platformFeeKobo;
+  let milestone = null;
+
+  if (milestones.length) {
+    // Milestones are funded one at a time, in order. The amount comes from the
+    // stored milestone - never from the request.
+    if (!['AWAITING_PAYMENT', 'IN_PROGRESS', 'SUBMITTED', 'REVISION_REQUESTED'].includes(order.status)) {
+      throw new AppError(`Order is not payable in its current status (${order.status})`, 400);
+    }
+    milestone = milestones.find((m) => m.status === 'PENDING_PAYMENT');
+    if (!milestone) throw new AppError('Every milestone on this order has already been paid for', 400);
+    amountKobo = milestone.amountKobo;
+    platformFeeKobo = milestone.platformFeeKobo;
+  } else if (!['AWAITING_PAYMENT'].includes(order.status)) {
     throw new AppError(`Order is not payable in its current status (${order.status})`, 400);
   }
 
@@ -27,25 +43,31 @@ export async function initializeOrderPayment(user, orderId) {
     user: user._id,
     task: order.task._id,
     order: order._id,
+    milestone: milestone?._id,
     paystackReference: reference,
-    amountKobo: order.agreedAmountKobo,
-    platformFeeKobo: order.platformFeeKobo,
+    amountKobo,
+    platformFeeKobo,
     status: 'INITIALIZED',
     paymentType: 'ORDER_PAYMENT',
-    metadata: { orderId: String(order._id) },
+    metadata: { orderId: String(order._id), milestoneId: milestone ? String(milestone._id) : undefined },
   });
 
   const paystackData = await paystack.initializeTransaction({
     email: user.email,
-    amountKobo: order.agreedAmountKobo,
+    amountKobo,
     reference,
-    metadata: { orderId: String(order._id), userId: String(user._id), paymentType: 'ORDER_PAYMENT' },
+    metadata: {
+      orderId: String(order._id),
+      milestoneId: milestone ? String(milestone._id) : undefined,
+      userId: String(user._id),
+      paymentType: 'ORDER_PAYMENT',
+    },
   });
 
   payment.paystackAccessCode = paystackData.access_code;
   await payment.save();
 
-  return { authorizationUrl: paystackData.authorization_url, reference, publicKey: undefined };
+  return { authorizationUrl: paystackData.authorization_url, reference, amountKobo, milestoneTitle: milestone?.title, publicKey: undefined };
 }
 
 /**
@@ -154,7 +176,7 @@ export async function verifyAndProcessPayment(reference, eventSource = 'redirect
       await freshPayment.save({ session });
 
       if (freshPayment.paymentType === 'ORDER_PAYMENT') {
-        await markOrderPaid(freshPayment.order, session);
+        await markOrderPaid(freshPayment.order, session, freshPayment.milestone);
       } else if (freshPayment.paymentType === 'SUBSCRIPTION') {
         await activateSubscriptionFromPayment(freshPayment, session);
       } else if (freshPayment.paymentType === 'FEATURED_TASK') {
@@ -186,6 +208,9 @@ export async function verifyAndProcessPayment(reference, eventSource = 'redirect
       entityId: order._id,
     });
     emailService.sendPaymentSuccessful(order.client, order);
+
+    // The chosen worker is now locked in: tell the other applicants (no-op if none/already done).
+    rejectOtherApplicants(order._id).catch((err) => console.error('[order] rejectOtherApplicants failed:', err?.message || err));
   } else if (finalPayment.paymentType === 'FEATURED_TASK') {
     const task = await Task.findById(finalPayment.task);
     if (task) {

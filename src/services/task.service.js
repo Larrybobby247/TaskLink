@@ -1,7 +1,8 @@
 
-import { Task, SavedTask, Application } from '../models/index.js';
+import { Task, SavedTask, Application, Order } from '../models/index.js';
 import { AppError } from '../utils/AppError.js';
 import { notifyWorkersOfNewTask } from './taskBroadcast.service.js';
+import { notify } from './notification.service.js';
 
 export async function createTask(clientId, payload) {
   return Task.create({
@@ -297,4 +298,104 @@ export async function getSavedTasks(
   ]);
 
   return { items, total };
+}
+
+// -----------------------------------------------------------------------------
+// Edit / delete (task owner)
+// -----------------------------------------------------------------------------
+
+const EDITABLE_STATUSES = ['DRAFT', 'PAUSED', 'PUBLISHED', 'APPLICATIONS_OPEN'];
+const DELETABLE_STATUSES = ['DRAFT', 'PAUSED', 'PUBLISHED', 'APPLICATIONS_OPEN', 'EXPIRED', 'CANCELLED'];
+const isTaskPost = (task) => !task.source || task.source === 'TASK_POST';
+
+async function findOwnedTask(clientId, taskId) {
+  const task = await Task.findOne({ _id: taskId, client: clientId });
+  if (!task) throw new AppError('Task not found', 404);
+  if (!isTaskPost(task)) {
+    throw new AppError('Gig orders and direct hires cannot be edited or deleted here', 400);
+  }
+  return task;
+}
+
+/**
+ * Owner edits a task. Allowed until a worker has been selected. Once people have
+ * applied, the price is locked so applicants are not bid against a moving target.
+ */
+export async function updateTask(clientId, taskId, changes) {
+  const task = await findOwnedTask(clientId, taskId);
+
+  if (!EDITABLE_STATUSES.includes(task.status)) {
+    throw new AppError('This task can no longer be edited because a worker has already been selected', 400);
+  }
+
+  const touchesPrice = ['budgetKobo', 'budgetType'].some(
+    (key) => changes[key] !== undefined && changes[key] !== task[key]
+  );
+  if (touchesPrice && task.applicationCount > 0) {
+    throw new AppError('The budget cannot be changed after workers have applied', 400);
+  }
+
+  if (changes.deadline && changes.deadline <= new Date()) {
+    throw new AppError('Deadline must be in the future', 400);
+  }
+
+  const next = { ...task.toObject(), ...changes };
+  if (next.isRemote === false && !String(next.location || '').trim()) {
+    throw new AppError('Location is required for on-site tasks', 400);
+  }
+
+  Object.assign(task, changes);
+  if (task.isRemote) task.location = undefined;
+  await task.save();
+  return task;
+}
+
+/**
+ * Owner deletes a task. A task nobody has touched is removed entirely. If workers
+ * have applied (or an order was ever created) the task is closed instead, so
+ * their history stays intact, and applicants are told.
+ */
+export async function deleteTask(clientId, taskId) {
+  const task = await findOwnedTask(clientId, taskId);
+
+  if (!DELETABLE_STATUSES.includes(task.status)) {
+    throw new AppError('This task has a worker assigned. Cancel the order from the order page instead.', 400);
+  }
+
+  const [applicationCount, orderExists] = await Promise.all([
+    Application.countDocuments({ task: task._id }),
+    Order.exists({ task: task._id }),
+  ]);
+
+  if (applicationCount === 0 && !orderExists) {
+    await SavedTask.deleteMany({ task: task._id });
+    await task.deleteOne();
+    return { deleted: true, message: 'Task deleted' };
+  }
+
+  if (task.status === 'CANCELLED') {
+    return { deleted: false, message: 'This task is already closed' };
+  }
+
+  const open = await Application.find({ task: task._id, status: { $in: ['PENDING', 'SHORTLISTED'] } }).select('worker');
+  await Application.updateMany(
+    { _id: { $in: open.map((a) => a._id) } },
+    { status: 'EXPIRED' }
+  );
+
+  task.status = 'CANCELLED';
+  await task.save();
+
+  for (const app of open) {
+    notify({
+      userId: app.worker,
+      type: 'APPLICATION_REJECTED',
+      title: 'Task closed',
+      body: `The client closed "${task.title}", so your application is no longer active.`,
+      entityType: 'TASK',
+      entityId: task._id,
+    }).catch(() => {});
+  }
+
+  return { deleted: false, message: 'Task closed. Workers who applied have been notified.' };
 }
