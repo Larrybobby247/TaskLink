@@ -8,6 +8,8 @@ const paymentSchema = new Schema(
     user: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     task: { type: Schema.Types.ObjectId, ref: 'Task' },
     order: { type: Schema.Types.ObjectId, ref: 'Order', index: true },
+    // Set when the payment funds a single milestone of a milestone-based order.
+    milestone: { type: Schema.Types.ObjectId },
     paystackReference: { type: String, required: true, unique: true },
     paystackAccessCode: String,
     amountKobo: { type: Number, required: true },
