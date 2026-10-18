@@ -12,7 +12,9 @@ const packageSchema = new Schema(
     priceKobo: { type: Number, required: true, min: 0 },
     deliveryDays: { type: Number, required: true, min: 1 },
     revisions: { type: Number, default: 1, min: 0 },
+    // `deliverables` = what this package includes; `excluded` = what it does not.
     deliverables: [{ type: String, trim: true }],
+    excluded: [{ type: String, trim: true }],
   },
   { _id: false }
 );
