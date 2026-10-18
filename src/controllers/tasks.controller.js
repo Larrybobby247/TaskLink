@@ -22,22 +22,13 @@ export const pauseTask = asyncHandler(async (req, res) => {
 });
 
 export const updateTask = asyncHandler(async (req, res) => {
-  const task = await Task.findOne({ _id: req.params.id, client: req.user._id });
-  if (!task) throw new AppError('Task not found', 404);
-  if (!['DRAFT', 'PAUSED'].includes(task.status)) {
-    throw new AppError('Only draft or paused tasks can be edited', 400);
-  }
-  Object.assign(task, req.body);
-  await task.save();
+  const task = await taskService.updateTask(req.user._id, req.params.id, req.body);
   return ok(res, { task });
 });
 
 export const deleteTask = asyncHandler(async (req, res) => {
-  const task = await Task.findOne({ _id: req.params.id, client: req.user._id });
-  if (!task) throw new AppError('Task not found', 404);
-  if (!['DRAFT'].includes(task.status)) throw new AppError('Only draft tasks can be deleted', 400);
-  await task.deleteOne();
-  return ok(res, { message: 'Task deleted' });
+  const result = await taskService.deleteTask(req.user._id, req.params.id);
+  return ok(res, result);
 });
 
 // req.user is optional here (route uses attachUserIfPresent, not requireAuth) -
@@ -58,7 +49,11 @@ export const searchTasks = asyncHandler(async (req, res) => {
 export const getMyTasks = asyncHandler(async (req, res) => {
   const { page, limit, skip } = getPagination(req.query);
   const filter = { client: req.user._id };
-  if (req.query.status) filter.status = req.query.status;
+  if (req.query.status) {
+    // Accepts one status or a comma-separated list (e.g. "PUBLISHED,APPLICATIONS_OPEN").
+    const statuses = String(req.query.status).split(',').map((s) => s.trim()).filter(Boolean);
+    filter.status = statuses.length > 1 ? { $in: statuses } : statuses[0];
+  }
   const [items, total] = await Promise.all([
     Task.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).populate('category'),
     Task.countDocuments(filter),

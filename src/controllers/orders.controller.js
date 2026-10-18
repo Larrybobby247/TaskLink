@@ -43,6 +43,21 @@ export const submitWork = asyncHandler(async (req, res) => {
   return ok(res, { order });
 });
 
+export const submitPlan = asyncHandler(async (req, res) => {
+  const order = await orderService.submitPlan(req.user._id, req.params.id, req.body);
+  return ok(res, { order });
+});
+
+export const respondToPlan = asyncHandler(async (req, res) => {
+  const order = await orderService.respondToPlan(req.user._id, req.params.id, req.body);
+  return ok(res, { order });
+});
+
+export const declineWorker = asyncHandler(async (req, res) => {
+  const order = await orderService.declineWorker(req.user._id, req.params.id, req.body.reason);
+  return ok(res, { order });
+});
+
 export const requestRevision = asyncHandler(async (req, res) => {
   const order = await orderService.requestRevision(req.user._id, req.params.id, req.body);
   return ok(res, { order });
