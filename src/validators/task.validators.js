@@ -19,6 +19,22 @@ export const createTaskSchema = z.object({
     path: ['location'],
   });
 
+// Only these fields can be changed by the owner. Everything else (status, client,
+// featured flags, counters...) is deliberately not editable through this route.
+export const updateTaskSchema = z.object({
+  title: z.string().trim().min(5).max(120),
+  description: z.string().trim().min(20).max(5000),
+  category: z.string().length(24, 'Invalid category id'),
+  budgetType: z.enum(['FIXED', 'NEGOTIABLE']),
+  budgetKobo: z.number().int().nonnegative(),
+  location: z.string().trim().optional(),
+  isRemote: z.boolean(),
+  deadline: z.coerce.date(),
+  applicationDeadline: z.coerce.date().optional().nullable(),
+  skillsRequired: z.array(z.string()).optional(),
+  additionalInstructions: z.string().max(2000).optional(),
+}).partial();
+
 export const applyToTaskSchema = z.object({
   message: z.string().trim().min(10).max(2000),
   proposedAmountKobo: z.number().int().nonnegative().optional(),
