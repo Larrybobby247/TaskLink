@@ -7,7 +7,8 @@ const packageSchema = z.object({
   priceKobo: z.number().int().nonnegative(),
   deliveryDays: z.number().int('Delivery days must be a whole number').min(1),
   revisions: z.number().int('Revisions must be a whole number').min(0).default(1),
-  deliverables: z.array(z.string()).optional(),
+  deliverables: z.array(z.string().trim().max(200)).max(20).optional(),
+  excluded: z.array(z.string().trim().max(200)).max(20).optional(),
 });
 
 export const createGigSchema = z.object({
